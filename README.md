@@ -44,7 +44,7 @@ colliding with them.
 ## Install
 
 ```bash
-pi install pi-cli-guard
+pi install npm:pi-cli-guard
 # or load this checkout for one session:
 pi -e .
 ```

@@ -40,7 +40,7 @@
 ## 安装
 
 ```bash
-pi install pi-cli-guard
+pi install npm:pi-cli-guard
 # 或者为单个会话加载这个 checkout：
 pi -e .
 ```
