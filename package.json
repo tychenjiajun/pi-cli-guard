@@ -1,0 +1,96 @@
+{
+  "name": "pi-cli-guard",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi extension that canonicalizes the agent's bash commands to the preferred modern toolchain: grep → rg (ripgrep) and a conservative find → fd subset, applied through the tool_call event so it composes with other bash extensions",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./engine": "./src/engine.ts",
+    "./engine.ts": "./src/engine.ts",
+    "./rules": "./src/rules.ts",
+    "./rules.ts": "./src/rules.ts",
+    "./rules/grep": "./src/rules/grep.ts",
+    "./rules/grep.ts": "./src/rules/grep.ts",
+    "./rules/find": "./src/rules/find.ts",
+    "./rules/find.ts": "./src/rules/find.ts",
+    "./contract": "./src/contract.ts",
+    "./contract.ts": "./src/contract.ts",
+    "./shell": "./src/shell.ts",
+    "./shell.ts": "./src/shell.ts",
+    "./path": "./src/path.ts",
+    "./path.ts": "./src/path.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "pi",
+    "llm",
+    "ai-agent",
+    "ai-agents",
+    "ai-coding",
+    "agentic-coding",
+    "tool-calling",
+    "tool-call-repair",
+    "bash",
+    "shell",
+    "grep",
+    "rg",
+    "ripgrep",
+    "find",
+    "fd",
+    "modern-cli",
+    "canonicalize",
+    "tool-guard",
+    "typescript",
+    "developer-tools",
+    "cli"
+  ],
+  "author": "Jiajun Chen <tychenjiajun@live.cn>",
+  "license": "MIT",
+  "homepage": "https://www.npmjs.com/package/pi-cli-guard",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tychenjiajun/pi-cli-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tychenjiajun/pi-cli-guard/issues"
+  },
+  "sideEffects": false,
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "README.md",
+    "docs/**",
+    "CONTEXT.md",
+    "AGENTS.md",
+    "LICENSE",
+    "assets/**"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "image": "./assets/preview.svg"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "unbash": "^4.0.11"
+  },
+  "packageManager": "pnpm@12.6.0"
+}
