@@ -1,6 +1,6 @@
 {
   "name": "pi-cli-guard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Pi extension that canonicalizes the agent's bash commands to the preferred modern toolchain: grep/egrep/fgrep → rg (ripgrep) and a conservative find → fd subset, applied through the tool_call event so it composes with other bash extensions",
   "main": "src/index.ts",
