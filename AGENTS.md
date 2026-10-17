@@ -23,8 +23,8 @@
 ## Architecture
 - `src/index.ts` — Extension entry: `tool_call` (rewrite) + `tool_result` (notice + contract)
 - `src/config.ts` — Environment config + binary resolution into `EnabledRule[]`
-- `src/engine.ts` — `unbash` parse, command walk, positional splice; pure
-- `src/rules.ts` — `CommandRule` type + curated registry (`grep-to-rg`, `find-to-fd`)
+- `src/engine.ts` — `unbash` parse, command walk, positional splice; pure. Skips the parse entirely when the source contains none of the enabled rule command names (substring test, so it only over-approximates)
+- `src/rules.ts` — `CommandRule` type + curated registry (`grep-to-rg`, `egrep-to-rg`, `fgrep-to-rg`, `find-to-fd`); `egrep`/`fgrep` are thin wrappers that prepend a synthetic `-E`/`-F` to `translateGrep`
 - `src/rules/grep.ts` — grep → rg translator + BRE/Rust dialect gate
 - `src/rules/find.ts` — find → fd translator (conservative whitelist)
 - `src/shell.ts` — `ArgToken`, `shellQuote`, `joinTokens`
@@ -37,6 +37,7 @@
 - fd: https://github.com/sharkdp/fd
 - fd's `--glob`/`-g` is a **boolean** flag; the glob is the single positional after it. `-g` is not an option-with-value, so passing it twice makes fd treat the second value as a search path — combine multiple globs into one brace glob `{a,b}`.
 - `fd` default is a **regex**, `-g` switches the positional to a glob.
+- `fd -p/--full-path` matches the **full path as a regex**, so `find -path GLOB` maps to `-p -s REGEX` only when the glob starts with `*` (unanchored) and `*` becomes `.*` (may cross `/`). A `-name` alongside it becomes `--and '(^|/)BASENAME$'`, because `--and` also sees the full path.
 - `rg` prints line numbers, headings and filenames differently from `grep` depending on tty/multi-file; `--with-filename`/`-n`/`--no-heading` pin the format.
 
 ## Commit Attribution

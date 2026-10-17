@@ -29,7 +29,13 @@ const hasRg = installed("rg");
 const fdName = installed("fd") ? "fd" : installed("fdfind") ? "fdfind" : undefined;
 
 const enabled: EnabledRule[] = [
-  ...(hasRg ? [{ rule: RULES["grep-to-rg"], binary: "rg" }] : []),
+  ...(hasRg
+    ? [
+        { rule: RULES["grep-to-rg"], binary: "rg" },
+        { rule: RULES["egrep-to-rg"], binary: "rg" },
+        { rule: RULES["fgrep-to-rg"], binary: "rg" },
+      ]
+    : []),
   ...(fdName ? [{ rule: RULES["find-to-fd"], binary: fdName }] : []),
 ];
 
@@ -63,6 +69,29 @@ function expectSame(original: string): void {
   expect(run(rewritten), `rewrite: ${rewritten}`).toBe(run(original));
 }
 
+/**
+ * fd appends a trailing `/` to matched directories and never lists the `.`
+ * search root, whereas find prints `./sub` and lists `.`. Strip both so the
+ * comparison judges the translation rather than these documented, cosmetic
+ * fd format differences.
+ */
+function normalizeForFd(output: string): string {
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.replace(/\/$/, ""))
+    .filter((line) => line !== ".")
+    .sort()
+    .join("\n");
+}
+
+/** Run original vs rewritten and compare, tolerating fd's directory format. */
+function expectSameNormalized(original: string): void {
+  const rewritten = rewriteCommand(original, enabled).command;
+  expect(rewritten, `did not rewrite: ${original}`).not.toBe(original);
+  expect(normalizeForFd(run(rewritten)), `rewrite: ${rewritten}`).toBe(normalizeForFd(run(original)));
+}
+
 describe.skipIf(!hasRg)("grep → rg equivalence (real rg)", () => {
   const cases = [
     "grep -n foo a.txt",
@@ -84,6 +113,11 @@ describe.skipIf(!hasRg)("grep → rg equivalence (real rg)", () => {
     "grep -A1 foo a.txt",
     "grep -B1 baz a.txt",
     "grep -v foo a.txt",
+    // egrep/fgrep run through the same translator with an implicit dialect.
+    "egrep -rn 'foo|baz' .",
+    "egrep -c '^fo' a.txt",
+    "fgrep -rn 'a+' .",
+    "fgrep -l foo a.txt b.txt",
   ];
   for (const command of cases) {
     it(command, () => expectSame(command));
@@ -99,27 +133,21 @@ describe.skipIf(!fdName)("find → fd equivalence (real fd)", () => {
     "find . -maxdepth 1 -name '*.txt'",
     "find . -name '*.txt' -o -name '*.log'",
     "find . -name '*.txt' -type f",
+    "find . -path '*sub*' -name '*.txt'",
+    "find . -type f -path '*.txt'",
+    "find . -path '*[ab].txt'",
+    "find . -path '*?.txt'",
+    "find . -path '*[!x]*.txt' -type f",
+    "find . \\( -type f -name '*.txt' \\)",
   ];
   for (const command of fileCases) {
     it(command, () => expectSame(command));
   }
 
-  it("find . -type d matches after normalizing fd's trailing slash and root", () => {
-    const original = run("find . -type d");
-    const rewritten = rewriteCommand("find . -type d", enabled).command;
-    const actual = run(rewritten)
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => line.replace(/\/$/, ""))
-      .filter((line) => line !== ".")
-      .sort()
-      .join("\n");
-    const expected = original
-      .split("\n")
-      .filter(Boolean)
-      .filter((line) => line !== ".")
-      .sort()
-      .join("\n");
-    expect(actual).toBe(expected);
-  });
+  // `find` prints `./sub` and lists `.`; fd prints `./sub/` and omits the root.
+  // Both differences are documented in the notice, so compare normalized.
+  const dirCases = ["find . -type d", "find . -path '*sub*'"];
+  for (const command of dirCases) {
+    it(`${command} (normalized for fd's directory format)`, () => expectSameNormalized(command));
+  }
 });

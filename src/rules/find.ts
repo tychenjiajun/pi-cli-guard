@@ -28,6 +28,97 @@ interface Glob {
 
 const TYPES = new Set(["f", "d", "l"]);
 
+/** Escape a single character for fd/rg's Rust-regex dialect. */
+function escapeRegex(char: string): string {
+  return /[.*+?^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
+}
+
+/** Index of the `]` closing the character class at `open`, or -1. */
+function classEnd(glob: string, open: number): number {
+  let i = open + 1;
+  if (glob[i] === "!" || glob[i] === "^") i++;
+  if (glob[i] === "]") i++;
+  for (; i < glob.length; i++) if (glob[i] === "]") return i;
+  return -1;
+}
+
+/**
+ * Translate a shell glob to the equivalent Rust regex. `star`/`question` are
+ * the regex atoms for `*`/`?`: `.*`/`.` when the glob may cross `/` (find's
+ * `-path`), `[^/]*`/`[^/]` when it must not (a basename). Returns `undefined`
+ * for the two corners where find's glob syntax has no provable regex form: a
+ * trailing lone backslash and an escape inside a bracket expression.
+ */
+function globToRegex(glob: string, star: string, question: string): string | undefined {
+  let out = "";
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i]!;
+    if (char === "\\") {
+      const next = glob[i + 1];
+      if (next === undefined) return undefined;
+      out += escapeRegex(next);
+      i++;
+      continue;
+    }
+    if (char === "*") {
+      out += star;
+      continue;
+    }
+    if (char === "?") {
+      out += question;
+      continue;
+    }
+    if (char === "[") {
+      const end = classEnd(glob, i);
+      if (end === -1) {
+        out += "\\[";
+        continue;
+      }
+      let body = glob.slice(i + 1, end);
+      // `\` inside a bracket expression means something different to find and
+      // to the regex engine; refuse rather than pick one.
+      if (body.includes("\\")) return undefined;
+      if (body.startsWith("!")) body = `^${body.slice(1)}`;
+      else if (body.startsWith("^")) body = `\\^${body.slice(1)}`;
+      out += `[${body}]`;
+      i = end;
+      continue;
+    }
+    out += escapeRegex(char);
+  }
+  return out;
+}
+
+function isOrToken(value: string): boolean {
+  return value === "-o" || value === "-or";
+}
+
+/**
+ * Drop grouping parentheses that cannot change meaning. A group with no `-o`
+ * inside is a plain conjunction, and find's AND already binds tighter than any
+ * surviving `-o`, so removing it is faithful. Returns `undefined` when a group
+ * contains `-o` (real precedence) or the parentheses are unbalanced, so the
+ * caller can refuse.
+ */
+function flattenRedundantGroups(args: readonly ArgToken[]): ArgToken[] | undefined {
+  const out: ArgToken[] = [];
+  const open: number[] = [];
+  for (const arg of args) {
+    if (arg.value === "(") {
+      open.push(out.length);
+      continue;
+    }
+    if (arg.value === ")") {
+      const start = open.pop();
+      if (start === undefined) return undefined;
+      if (out.slice(start).some((entry) => isOrToken(entry.value))) return undefined;
+      continue;
+    }
+    out.push(arg);
+  }
+  return open.length === 0 ? out : undefined;
+}
+
 function positiveInt(value: string): number | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   const n = Number(value);
@@ -38,11 +129,18 @@ function positiveInt(value: string): number | undefined {
  * Translate a `find` argv (tokens after `find`) into `fd` argv, or refuse.
  */
 export function translateFind(args: readonly ArgToken[]): RuleDecision {
+  const flattened = flattenRedundantGroups(args);
+  if (!flattened) {
+    return { kind: "refuse", reason: "grouped expression with -o cannot be flattened faithfully" };
+  }
+  args = flattened;
+
   const paths: ArgToken[] = [];
   const globs: Glob[] = [];
   const types: string[] = [];
   let maxDepth: number | undefined;
   let minDepth: number | undefined;
+  let pathGlob: string | undefined;
   let follow = false;
 
   let i = 0;
@@ -142,10 +240,36 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
       continue;
     }
 
+    if (value === "-path") {
+      if (expectingName) return { kind: "refuse", reason: "-o must be followed by -name/-iname" };
+      if (pathGlob !== undefined) return { kind: "refuse", reason: "multiple -path tests combine with AND" };
+      const next = args[i + 1];
+      if (next === undefined) return { kind: "refuse", reason: "-path needs a value" };
+      if (!next.value.startsWith("*")) {
+        return {
+          kind: "refuse",
+          reason: `anchored -path glob ${JSON.stringify(next.value)} cannot be mapped faithfully (fd matches absolute paths)`,
+        };
+      }
+      pathGlob = next.value;
+      lastWasNameTest = false;
+      i += 2;
+      continue;
+    }
+
     return { kind: "refuse", reason: `unsupported find expression ${JSON.stringify(value)}` };
   }
 
   if (expectingName) return { kind: "refuse", reason: "-o must be followed by -name/-iname" };
+
+  if (pathGlob !== undefined) {
+    if (globs.length > 1) {
+      return { kind: "refuse", reason: "cannot combine -path with an -o name chain" };
+    }
+    if (globs.some((glob) => glob.caseInsensitive)) {
+      return { kind: "refuse", reason: "cannot combine -path with -iname (fd's -i/-s is global)" };
+    }
+  }
 
   // `find`'s AND binds tighter than `-o`, so `-type f -name a -o -name b` means
   // `(-type f -name a) -o (-name b)`: the second branch is not type-filtered.
@@ -161,6 +285,41 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
   if (maxDepth !== undefined) out.push(token("-d"), token(String(maxDepth)));
   if (minDepth !== undefined) out.push(token("--min-depth"), token(String(minDepth)));
   for (const type of types) out.push(token("-t"), token(type));
+
+  if (pathGlob !== undefined) {
+    // `find -path` matches the whole path with a glob where `*` crosses `/`;
+    // fd's `--full-path` matches a regex where `.*` crosses `/`. Both are
+    // unanchored once the glob starts with `*`, which is why the leading-`*`
+    // check above is what makes the mapping faithful.
+    const pathRegex = globToRegex(pathGlob, ".*", ".");
+    if (pathRegex === undefined) {
+      return { kind: "refuse", reason: `-path glob ${JSON.stringify(pathGlob)} has no faithful regex form` };
+    }
+    out.push(token("-p"), token("-s"), token(pathRegex));
+    if (globs.length === 1) {
+      // `-name` still applies to the basename. `--and` also sees the full path
+      // under `--full-path`, so anchor the basename regex at a separator.
+      const nameRegex = globToRegex(globs[0]!.glob, "[^/]*", "[^/]");
+      if (nameRegex === undefined) {
+        return {
+          kind: "refuse",
+          reason: `-name glob ${JSON.stringify(globs[0]!.glob)} has no faithful regex form`,
+        };
+      }
+      out.push(token("--and"), token(`(^|/)${nameRegex}$`));
+    }
+    if (paths.length === 0) out.push(token("."));
+    for (const path of paths) out.push(path);
+    return {
+      kind: "rewrite",
+      name: "fd",
+      args: out,
+      notes: [
+        "find→fd",
+        "fd matches -path against the full path with a regex; directories print with a trailing /; fd skips hidden and .gitignore'd paths (add -u to search all)",
+      ],
+    };
+  }
 
   let pattern = ".";
   if (globs.length === 1) {

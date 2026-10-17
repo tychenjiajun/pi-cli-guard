@@ -5,6 +5,8 @@ import { RULES } from "./rules.ts";
 
 const enabled: EnabledRule[] = [
   { rule: RULES["grep-to-rg"], binary: "rg" },
+  { rule: RULES["egrep-to-rg"], binary: "rg" },
+  { rule: RULES["fgrep-to-rg"], binary: "rg" },
   { rule: RULES["find-to-fd"], binary: "fd" },
 ];
 
@@ -46,6 +48,12 @@ describe("rewriteCommand — placement", () => {
   it("rewrites a BRE alternation and is idempotent", () => {
     expect(rw("grep -rn 'FAIL\\|Test Files' .")).toBe("rg --with-filename -n 'FAIL|Test Files' .");
     expect(rw("rg --with-filename -n 'FAIL|Test Files' .")).toBe("rg --with-filename -n 'FAIL|Test Files' .");
+  });
+
+  it("rewrites egrep/fgrep through the shared grep translator", () => {
+    expect(rw("egrep -rn foo .")).toBe("rg --with-filename -n foo .");
+    expect(rw("fgrep foo f")).toBe("rg -F foo f");
+    expect(rw("egrep 'a|b' f")).toBe("rg 'a|b' f");
   });
 });
 

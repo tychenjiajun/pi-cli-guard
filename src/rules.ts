@@ -12,11 +12,12 @@
 // modern-toolchain canonicalizations.
 
 import type { ArgToken } from "./shell.ts";
+import { token } from "./shell.ts";
 import { translateGrep } from "./rules/grep.ts";
 import { translateFind } from "./rules/find.ts";
 
 /** Identifier of a built-in rule. */
-export type RuleId = "grep-to-rg" | "find-to-fd";
+export type RuleId = "grep-to-rg" | "egrep-to-rg" | "fgrep-to-rg" | "find-to-fd";
 
 export type RuleDecision =
   | {
@@ -45,7 +46,12 @@ export interface CommandRule {
 }
 
 /** Every rule ships enabled by default, in application order. */
-export const RULE_IDS: readonly RuleId[] = ["grep-to-rg", "find-to-fd"];
+export const RULE_IDS: readonly RuleId[] = [
+  "grep-to-rg",
+  "egrep-to-rg",
+  "fgrep-to-rg",
+  "find-to-fd",
+];
 
 /** The curated registry, keyed by id. */
 export const RULES: Record<RuleId, CommandRule> = {
@@ -55,6 +61,24 @@ export const RULES: Record<RuleId, CommandRule> = {
     binary: "rg",
     label: "grep → rg (ripgrep)",
     translate: translateGrep,
+  },
+  // `egrep`/`fgrep` are grep with an implicit dialect: ERE and fixed strings.
+  // Wrapping `translateGrep` with a synthetic leading flag reuses every option
+  // mapping and the dialect gate below; the flag is dropped in the output
+  // because rg is ERE-by-default and `-F` is passed through.
+  "egrep-to-rg": {
+    id: "egrep-to-rg",
+    command: "egrep",
+    binary: "rg",
+    label: "egrep → rg (ripgrep)",
+    translate: (args) => translateGrep([token("-E"), ...args]),
+  },
+  "fgrep-to-rg": {
+    id: "fgrep-to-rg",
+    command: "fgrep",
+    binary: "rg",
+    label: "fgrep → rg (ripgrep)",
+    translate: (args) => translateGrep([token("-F"), ...args]),
   },
   "find-to-fd": {
     id: "find-to-fd",

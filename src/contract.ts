@@ -25,6 +25,14 @@ export interface PiCliGuardDetails {
   /** The command that actually ran. */
   readonly command: string;
   readonly changes: readonly PiCliGuardChange[];
+  /** Legacy commands a rule saw but declined to rewrite, in the same edit. */
+  readonly refusals?: readonly PiCliGuardRefusal[];
+}
+
+export interface PiCliGuardRefusal {
+  readonly rule: RuleId;
+  readonly before: string;
+  readonly reason: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,6 +48,15 @@ function isChange(value: unknown): value is PiCliGuardChange {
   );
 }
 
+function isRefusal(value: unknown): value is PiCliGuardRefusal {
+  return (
+    isRecord(value) &&
+    typeof value.rule === "string" &&
+    typeof value.before === "string" &&
+    typeof value.reason === "string"
+  );
+}
+
 /** Read a well-formed `piCliGuard` record, or undefined for anything else. */
 export function readPiCliGuardDetails(details: unknown): PiCliGuardDetails | undefined {
   if (!isRecord(details)) return undefined;
@@ -48,5 +65,8 @@ export function readPiCliGuardDetails(details: unknown): PiCliGuardDetails | und
   if (value.version !== PI_CLI_GUARD_CONTRACT_VERSION) return undefined;
   if (typeof value.originalCommand !== "string" || typeof value.command !== "string") return undefined;
   if (!Array.isArray(value.changes) || !value.changes.every(isChange)) return undefined;
+  if (value.refusals !== undefined && (!Array.isArray(value.refusals) || !value.refusals.every(isRefusal))) {
+    return undefined;
+  }
   return value as unknown as PiCliGuardDetails;
 }

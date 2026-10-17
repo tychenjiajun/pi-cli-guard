@@ -12,7 +12,7 @@ English | [简体中文](./docs/README.zh-CN.md)
 [![pi extension](https://img.shields.io/badge/pi-extension-7c3aed.svg)](https://pi.dev/docs/latest/extensions)
 [![pi package](https://img.shields.io/badge/pi-package-7c3aed.svg)](https://pi.dev/docs/latest/packages)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](./tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](./package.json)
+[![Tests](https://img.shields.io/badge/tests-169%20passing-brightgreen.svg)](./package.json)
 [![CI](https://github.com/tychenjiajun/pi-cli-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/tychenjiajun/pi-cli-guard/actions/workflows/ci.yml)
 [![npm downloads](https://img.shields.io/npm/dm/pi-cli-guard.svg)](https://www.npmjs.com/package/pi-cli-guard)
 [![pnpm](https://img.shields.io/badge/package%20manager-pnpm-f69220.svg)](https://pnpm.io)
@@ -26,7 +26,7 @@ English | [简体中文](./docs/README.zh-CN.md)
 [pi](https://github.com/earendil-works/pi) AI coding agent that canonicalizes the
 agent's bash commands to the preferred modern toolchain:
 
-- **`grep` → `rg`** ([ripgrep](https://github.com/BurntSushi/ripgrep))
+- **`grep`/`egrep`/`fgrep` → `rg`** ([ripgrep](https://github.com/BurntSushi/ripgrep))
 - **`find` → `fd`** ([fd](https://github.com/sharkdp/fd)) — a conservative,
   whitelisted subset only
 
@@ -60,12 +60,15 @@ Read from the environment — no settings plumbing:
 | Variable | Default | Meaning |
 |---|---|---|
 | `PI_CLI_GUARD` | on | `off`/`0`/`false` disables the extension entirely |
-| `PI_CLI_GUARD_RULES` | all | comma list: `rg`, `fd`, or full ids (`grep-to-rg`, `find-to-fd`) |
+| `PI_CLI_GUARD_RULES` | all | comma list of short names (`rg`, `egrep`, `fgrep`, `fd`) or full ids (`grep-to-rg`, `find-to-fd`) |
 | `PI_CLI_GUARD_NOTICE` | on | `off` stops appending the rewrite note to the result |
 
 ## What it rewrites
 
 ### `grep` → `rg`
+
+`egrep` and `fgrep` share this translator: they are just `grep` with an implicit
+`-E`/`-F`, and the injected flag is dropped when it matches rg's default dialect.
 
 Option letters collide between the two tools, so a naive rename is unsafe. The
 collisions are mapped:
@@ -107,13 +110,22 @@ Only these forms are translated; anything else is refused:
 | `-type f/d/l` | `-t f/d/l` |
 | `-maxdepth N` / `-mindepth N` | `-d N` / `--min-depth N` |
 | `-name A -o -name B` | `-g '{A,B}'` |
+| `-path GLOB` (leading `*`) | `-p -s REGEX` (glob → full-path regex) |
+| `-path GLOB -name GLOB` | `-p -s REGEX --and '(^\|/)BASENAME$'` |
+| `\( … \)` with no `-o` inside | *(parentheses dropped)* |
 | leading `-L` | `-L` (follow symlinks) |
 
+`-path`'s glob becomes a Rust regex where `*` still crosses `/`; only globs that
+start with `*` are accepted, because that is what makes find's whole-path match
+and fd's unanchored `--full-path` match agree.
+
 Refused (left as `find`): `-exec`, `-delete`, `-prune`, `-newer`, `-perm`,
-`-size`, `-path`, `-regex`, `!`/`-not`, `\( \)`, boolean `-o` that is not
-between name globs, implicit-AND name globs, name globs containing `/`, and an
-`-o` name chain combined with `-type` (find's AND binds tighter than `-o`, so
-`-type f -name a -o -name b` cannot be expressed by one fd call).
+`-size`, `-regex`, `!`/`-not`, boolean `-o` that is not between name globs,
+implicit-AND name globs, name globs containing `/`, an anchored `-path` glob,
+`-path` mixed with `-iname` or an `-o` chain, a group that contains `-o` (real
+precedence), and an `-o` name chain combined with `-type` (find's AND binds
+tighter than `-o`, so `-type f -name a -o -name b` cannot be expressed by one fd
+call).
 
 ## Fidelity guarantees and known deviations
 
@@ -134,6 +146,10 @@ Accepted, documented deviations (surfaced to the model in the notice):
   rg — this turns a common model mistake into working behaviour.
 - **BRE patterns** that would change meaning are refused, not guessed.
 
+A command a rule recognises but declines to translate is left byte-for-byte
+untouched and only reported (`refusals`), so the model can tell "the guard had
+no faithful equivalent" from "the guard never looked".
+
 The rewrite is reported back to the model (a trailing note on the bash result)
 and recorded in `details.piCliGuard`:
 
@@ -145,6 +161,7 @@ if (guard) {
   guard.originalCommand; // "grep -rn foo ."
   guard.command;         // "rg --with-filename -n foo ."
   guard.changes;         // [{ rule: "grep-to-rg", before, after }]
+  guard.refusals;        // [{ rule: "find-to-fd", before, reason }] — declined rewrites
 }
 ```
 
@@ -173,7 +190,7 @@ strip/re-apply a trailing `rg`/`fd` view extractor.
 
 ```bash
 pnpm install
-pnpm test        # 138 unit + real-binary equivalence tests
+pnpm test        # 169 unit + real-binary equivalence tests
 pnpm typecheck
 pi -e .          # load this checkout as an extension for one session
 ```

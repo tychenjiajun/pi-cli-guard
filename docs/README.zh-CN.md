@@ -12,7 +12,7 @@
 [![pi extension](https://img.shields.io/badge/pi-extension-7c3aed.svg)](https://pi.dev/docs/latest/extensions)
 [![pi package](https://img.shields.io/badge/pi-package-7c3aed.svg)](https://pi.dev/docs/latest/packages)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](../tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](../package.json)
+[![Tests](https://img.shields.io/badge/tests-169%20passing-brightgreen.svg)](../package.json)
 [![CI](https://github.com/tychenjiajun/pi-cli-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/tychenjiajun/pi-cli-guard/actions/workflows/ci.yml)
 [![npm downloads](https://img.shields.io/npm/dm/pi-cli-guard.svg)](https://www.npmjs.com/package/pi-cli-guard)
 [![pnpm](https://img.shields.io/badge/package%20manager-pnpm-f69220.svg)](https://pnpm.io)
@@ -25,7 +25,7 @@
 [pi](https://github.com/earendil-works/pi) AI 编码代理扩展，它把代理的 bash 命令
 规范化到首选的现代工具链：
 
-- **`grep` → `rg`**（[ripgrep](https://github.com/BurntSushi/ripgrep)）
+- **`grep`/`egrep`/`fgrep` → `rg`**（[ripgrep](https://github.com/BurntSushi/ripgrep)）
 - **`find` → `fd`**（[fd](https://github.com/sharkdp/fd)）——仅限一个保守的白名单子集
 
 它**不**覆盖 `bash` 工具。它在 `tool_call` 事件里改写 `event.input.command`，因此
@@ -55,12 +55,15 @@ pi -e .
 | 变量 | 默认 | 含义 |
 |---|---|---|
 | `PI_CLI_GUARD` | on | `off`/`0`/`false` 完全禁用扩展 |
-| `PI_CLI_GUARD_RULES` | all | 逗号列表：`rg`、`fd`，或完整 id（`grep-to-rg`、`find-to-fd`） |
+| `PI_CLI_GUARD_RULES` | all | 逗号列表：短名（`rg`、`egrep`、`fgrep`、`fd`）或完整 id（`grep-to-rg`、`find-to-fd`） |
 | `PI_CLI_GUARD_NOTICE` | on | `off` 不再往结果里追加改写说明 |
 
 ## 它改写什么
 
 ### `grep` → `rg`
+
+`egrep` 与 `fgrep` 共用这个翻译器：它们就是隐含 `-E`/`-F` 的 `grep`，当注入的
+标志与 rg 的默认方言一致时会被丢弃。
 
 两个工具的单字母选项含义相撞，因此简单改名并不安全。这些冲突被显式映射：
 
@@ -99,12 +102,21 @@ pi -e .
 | `-type f/d/l` | `-t f/d/l` |
 | `-maxdepth N` / `-mindepth N` | `-d N` / `--min-depth N` |
 | `-name A -o -name B` | `-g '{A,B}'` |
+| `-path GLOB`（以 `*` 开头） | `-p -s REGEX`（glob → 全路径 regex） |
+| `-path GLOB -name GLOB` | `-p -s REGEX --and '(^\|/)BASENAME$'` |
+| 内部无 `-o` 的 `\( … \)` | *（括号被丢弃）* |
 | 前置 `-L` | `-L`（跟随符号链接） |
 
-拒绝（保持 `find`）：`-exec`、`-delete`、`-prune`、`-newer`、`-perm`、`-size`、
-`-path`、`-regex`、`!`/`-not`、`\( \)`、不属于 name glob 之间的布尔 `-o`、隐式 AND
-的多个 name glob、含 `/` 的 name glob，以及 `-o` 名字链与 `-type` 的组合（find 的
-AND 优先级高于 `-o`，因此 `-type f -name a -o -name b` 无法用一次 fd 调用表达）。
+`-path` 的 glob 会变成 `*` 仍可跨 `/` 的 Rust regex；只有以 `*` 开头的 glob
+会被接受，因为正是这一点让 find 的全路径匹配与 fd 无锚定的 `--full-path` 匹配
+彼此一致。
+
+拒绝（保持 `find`）：`-exec`、`-delete`、`-prune`、`-newer`、`-perm`、
+`-size`、`-regex`、`!`/`-not`、不属于 name glob 之间的布尔 `-o`、隐式 AND
+的多个 name glob、含 `/` 的 name glob、带锚定的 `-path` glob、`-path` 与
+`-iname` 或 `-o` 链的组合、内部含 `-o` 的分组（真实优先级），以及 `-o` 名字链
+与 `-type` 的组合（find 的 AND 优先级高于 `-o`，因此
+`-type f -name a -o -name b` 无法用一次 fd 调用表达）。
 
 ## 保真保证与已知偏差
 
@@ -122,6 +134,9 @@ AND 优先级高于 `-o`，因此 `-type f -name a -o -name b` 无法用一次 f
   的模型失误变成了可用的行为。
 - **会改变含义的 BRE 模式**拒绝而非猜测。
 
+规则识别到但拒绝翻译的命令会逐字节保持原样，只在 `refusals` 里报告，这样模型能
+区分“没有忠实的等价写法”和“根本没检查过”。
+
 改写会回报给模型（bash 结果尾部的说明），并记录在 `details.piCliGuard` 里：
 
 ```ts
@@ -132,6 +147,7 @@ if (guard) {
   guard.originalCommand; // "grep -rn foo ."
   guard.command;         // "rg --with-filename -n foo ."
   guard.changes;         // [{ rule: "grep-to-rg", before, after }]
+  guard.refusals;        // [{ rule: "find-to-fd", before, reason }] —— 被拒绝的改写
 }
 ```
 
@@ -159,7 +175,7 @@ pi 的工具注册表是*同名首次注册者胜*。`pi-tool-guard` 已经覆�
 
 ```bash
 pnpm install
-pnpm test        # 138 个单元 + 真实二进制等价测试
+pnpm test        # 169 个单元 + 真实二进制等价测试
 pnpm typecheck
 pi -e .          # 为单个会话加载这个 checkout 作为扩展
 ```

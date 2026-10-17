@@ -76,11 +76,12 @@ describe("translateFind — refusals", () => {
   it("refuses boolean expressions other than -o between names", () => {
     expect(render(toks(".", "-type", "f", "-o", "-type", "d"))).toMatch(/^REFUSE/);
     expect(render(toks(".", "!", "-name", "x"))).toMatch(/^REFUSE/);
-    expect(render(toks(".", "(", "-name", "x", ")"))).toMatch(/^REFUSE/);
+    // A group that actually carries `-o` has real precedence — refuse.
+    expect(render(toks(".", "(", "-name", "x", "-o", "-name", "y", ")"))).toMatch(/^REFUSE/);
   });
 
-  it("refuses -path/-regex and other predicates", () => {
-    expect(render(toks(".", "-path", '"*node_modules*"'))).toMatch(/^REFUSE/);
+  it("refuses -regex and other predicates", () => {
+    expect(render(toks(".", "-regex", ".*x"))).toMatch(/^REFUSE/);
     expect(render(toks(".", "-newer", "x"))).toMatch(/^REFUSE/);
     expect(render(toks(".", "-perm", "644"))).toMatch(/^REFUSE/);
   });
@@ -106,6 +107,72 @@ describe("translateFind — refusals", () => {
     // branch, and one fd `-t` filter would wrongly apply to both.
     expect(render(toks(".", "-type", "f", "-name", '"*.ts"', "-o", "-name", '"*.tsx"'))).toMatch(/^REFUSE/);
     expect(render(toks(".", "-name", '"*.ts"', "-o", "-name", '"*.tsx"', "-type", "f"))).toMatch(/^REFUSE/);
+  });
+});
+
+describe("translateFind — grouping and -path", () => {
+  it("drops redundant parentheses around a single test", () => {
+    expect(render(toks(".", "-type", "f", "(", "-iname", '"*.arw"', ")"))).toBe(
+      "fd -t f -g -i '*.arw' .",
+    );
+  });
+
+  it("refuses a group that contains -o", () => {
+    expect(render(toks(".", "(", "-name", "a", "-o", "-name", "b", ")"))).toMatch(/^REFUSE/);
+  });
+
+  it("maps an unanchored -path glob to a full-path regex", () => {
+    expect(render(toks(".", "-path", '"*node_modules*"'))).toBe("fd -p -s '.*node_modules.*' .");
+  });
+
+  it("combines -path with -name via --and", () => {
+    expect(render(toks(".", "-path", '"*/ffo/*"', "-name", '"*.py"'))).toBe(
+      "fd -p -s '.*/ffo/.*' --and '(^|/)[^/]*\\.py$' .",
+    );
+  });
+
+  it("combines -path with -type", () => {
+    expect(render(toks("src", "-type", "f", "-path", '"*/gen/*"'))).toBe(
+      "fd -t f -p -s '.*/gen/.*' src",
+    );
+  });
+
+  it("translates ? and bracket classes inside a -path glob", () => {
+    expect(render(toks(".", "-path", ["*src/[ab]?.ts", "*src/[ab]?.ts"]))).toBe(
+      "fd -p -s '.*src/[ab].\\.ts' .",
+    );
+    expect(render(toks(".", "-path", ["*[!x]*", "*[!x]*"]))).toBe("fd -p -s '.*[^x].*' .");
+  });
+
+  it("refuses glob corners with no faithful regex form", () => {
+    // A trailing lone backslash, and an escape inside a bracket expression.
+    expect(render(toks(".", "-path", ["*x\\", "*x\\"]))).toMatch(/^REFUSE/);
+    expect(render(toks(".", "-path", ["*[a\\]x*", "*[a\\]x*"]))).toMatch(/^REFUSE/);
+  });
+
+  it("refuses an anchored -path glob (fd matches absolute paths)", () => {
+    expect(render(toks(".", "-path", '"./src/*"'))).toMatch(/^REFUSE/);
+  });
+
+  it("refuses -path mixed with -iname or an -o chain", () => {
+    expect(render(toks(".", "-path", '"*x*"', "-iname", '"*.py"'))).toMatch(/^REFUSE/);
+    expect(render(toks(".", "-path", '"*x*"', "-name", "a", "-o", "-name", "b"))).toMatch(/^REFUSE/);
+  });
+});
+
+describe("translateFind — refusals that stay refusals", () => {
+  it("refuses -o name globs combined with -type", () => {
+    expect(render(toks(".", "-type", "f", "-name", "a", "-o", "-name", "b"))).toMatch(/^REFUSE/);
+  });
+
+  it("refuses -not / !", () => {
+    expect(render(toks(".", "!", "-path", '"*x*"'))).toMatch(/^REFUSE/);
+    expect(render(toks(".", "-not", "-name", "x"))).toMatch(/^REFUSE/);
+  });
+
+  it("refuses -exec and -delete", () => {
+    expect(render(toks(".", "-name", "x", "-exec", "rm", "{}", ";"))).toMatch(/^REFUSE/);
+    expect(render(toks(".", "-name", "x", "-delete"))).toMatch(/^REFUSE/);
   });
 });
 

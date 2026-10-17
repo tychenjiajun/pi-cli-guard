@@ -89,6 +89,16 @@ function hasSubstitution(word: Word | undefined): boolean {
 export function rewriteCommand(source: string, enabled: readonly EnabledRule[]): EngineResult {
   if (enabled.length === 0) return { command: source, changes: [], refusals: [] };
 
+  // Fast path: `unbash.parse` is the extension's only real per-call cost and it
+  // runs on every bash invocation. A command that does not contain any enabled
+  // rule's command name as a substring cannot rewrite, so skip the parse.
+  // Substring (not word-boundary) matching is deliberate: it only
+  // over-approximates, so it can never miss `'grep'`, `/usr/bin/grep`, or
+  // `\grep`; command substitutions are ignored by `collectCommands` anyway.
+  if (!enabled.some((entry) => source.includes(entry.rule.command))) {
+    return { command: source, changes: [], refusals: [] };
+  }
+
   let script: unknown;
   try {
     script = parse(source);

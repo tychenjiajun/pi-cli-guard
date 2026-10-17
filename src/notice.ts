@@ -17,10 +17,18 @@ const STATUS_KEY = "pi-cli-guard";
 const STATUS_DURATION_MS = 4_000;
 const statusTimers = new WeakMap<object, ReturnType<typeof setTimeout>>();
 
+const RG_GUIDANCE = "rg respects .gitignore and skips hidden files (add -u to search all).";
+
 const GUIDANCE: Record<RuleId, string> = {
-  "grep-to-rg": "rg respects .gitignore and skips hidden files (add -u to search all).",
-  "find-to-fd": "fd skips hidden and .gitignore'd paths (add -u to search all).",
+  "grep-to-rg": RG_GUIDANCE,
+  "egrep-to-rg": RG_GUIDANCE,
+  "fgrep-to-rg": RG_GUIDANCE,
+  "find-to-fd":
+    "fd skips hidden and .gitignore'd paths; directories print with a trailing / (add -u to search all).",
 };
+
+/** How many before → after lines the model notice lists before summarizing. */
+const MAX_LISTED_CHANGES = 3;
 
 /** `grep → rg (ripgrep) · find → fd` for the rules that fired. */
 export function summarizeRules(details: PiCliGuardDetails): string {
@@ -36,13 +44,28 @@ export function summarizeRules(details: PiCliGuardDetails): string {
 
 /** The line appended to the bash result so the model sees what changed. */
 export function buildNoticeText(details: PiCliGuardDetails): string {
-  const lines = ["[pi-cli-guard] Rewrote bash command(s) to the preferred modern toolchain:"];
-  for (const change of details.changes) {
+  const lines = [
+    `[pi-cli-guard] Rewrote bash command(s) to the preferred modern toolchain: ${summarizeRules(details)}`,
+  ];
+  for (const change of details.changes.slice(0, MAX_LISTED_CHANGES)) {
     lines.push(`  ${change.before}  →  ${change.after}`);
   }
-  const guidance = new Set<RuleId>();
-  for (const change of details.changes) guidance.add(change.rule);
-  for (const rule of guidance) lines.push(GUIDANCE[rule]);
+  const hidden = details.changes.length - MAX_LISTED_CHANGES;
+  if (hidden > 0) lines.push(`  (+${hidden} more; see details.piCliGuard)`);
+
+  // Dedupe by text, so a chain that rewrites both `grep` and `egrep` states the
+  // rg/.gitignore caveat once.
+  const guidance = new Set<string>();
+  for (const change of details.changes) guidance.add(GUIDANCE[change.rule]);
+  for (const text of guidance) lines.push(text);
+
+  const refused = details.refusals?.length ?? 0;
+  if (refused > 0) {
+    const plural = refused === 1 ? "" : "s";
+    lines.push(
+      `Left ${refused} other command${plural} unchanged (no faithful rewrite; see details.piCliGuard).`,
+    );
+  }
   return lines.join("\n");
 }
 

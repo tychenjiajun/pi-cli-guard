@@ -99,6 +99,18 @@ describe("cli guard extension", () => {
     expect(result.structuredContent.output).toBe("foo");
   });
 
+  it("records refusals alongside a rewrite", async () => {
+    const { pi, handlers } = harness();
+    registerCliGuard(pi, config);
+    await handlers.tool_call![0]!(callEvent("grep -rn foo .; find . -name x -delete"), ctx);
+    const result = (await handlers.tool_result![0]!(resultEvent(), ctx)) as {
+      content: { type: string; text: string }[];
+      details: { piCliGuard: { refusals?: { reason: string }[] } };
+    };
+    expect(result.details.piCliGuard.refusals?.[0]!.reason).toContain("-delete");
+    expect(result.content[1]!.text).toContain("Left 1 other command unchanged");
+  });
+
   it("does not append a notice when disabled", async () => {
     const { pi, handlers } = harness();
     registerCliGuard(pi, { ...config, notice: false });

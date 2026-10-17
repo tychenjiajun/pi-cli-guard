@@ -86,6 +86,15 @@ export function registerCliGuard(pi: ExtensionAPI, config?: CliGuardConfig): voi
         before: change.before,
         after: change.after,
       })),
+      ...(rewritten.refusals.length > 0
+        ? {
+            refusals: rewritten.refusals.map((refusal) => ({
+              rule: refusal.rule,
+              before: refusal.before,
+              reason: refusal.reason,
+            })),
+          }
+        : {}),
     };
 
     remember(pending, event.toolCallId, details);
