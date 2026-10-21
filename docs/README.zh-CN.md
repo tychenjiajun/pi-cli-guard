@@ -3,7 +3,7 @@
 [English](../README.md) | 简体中文
 
 <p align="center">
-  <img src="../assets/preview.svg" alt="pi-cli-guard 把模型的 bash 命令改写到现代工具链——grep → rg，以及一个保守的 find → fd 子集" width="880">
+  <img src="https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/preview.png" alt="pi-cli-guard 把模型的 bash 命令改写到现代工具链——grep → rg，以及一个保守的 find → fd 子集" width="880">
 </p>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
@@ -37,6 +37,10 @@
 > **899 次 `find` vs 1 次 `fd`**——外加用户反复打断说*“grep 太慢了，用 rg”*。
 > 一行提示词不够，harness 必须动手修。
 
+**安装：** `pi install npm:pi-cli-guard` · 参见
+[pi.dev 画廊页面](https://pi.dev/packages/pi-cli-guard) 与
+[pi package 文档](https://pi.dev/docs/latest/packages)。
+
 ## 安装
 
 ```bash
@@ -59,6 +63,8 @@ pi -e .
 | `PI_CLI_GUARD_NOTICE` | on | `off` 不再往结果里追加改写说明 |
 
 ## 它改写什么
+
+![演示：pi-cli-guard 把模型写的遗留 grep/find 改写为 rg 和 fd](https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/demo.gif)
 
 ### `grep` → `rg`
 
@@ -158,6 +164,29 @@ pi 的工具注册表是*同名首次注册者胜*。`pi-tool-guard` 已经覆�
 里改写输入。`pi-tool-guard` 看到的是改写后的命令，仍可剥离/重放尾部的 `rg`/`fd`
 视图抽取器。
 
+## FAQ
+
+### pi-cli-guard 会覆盖或替换 bash 工具吗？
+
+不会。它在 `tool_call` 事件里改写 `event.input.command`，从不重新注册工具，
+因此首次注册的 `bash`（例如 `pi-tool-guard`）始终生效。
+
+### 这和在提示词里直接叫模型用 rg 有什么区别？
+
+提示词只是建议——真实会话中模型仍写了 6,888 次 `grep` 对 1,648 次 `rg`。
+pi-cli-guard 在 harness 层强制执行映射，任何会改变行为的改写（BRE、find
+边界情形）一律拒绝。
+
+### pi-cli-guard 能和 pi-tool-guard 等其他 bash 扩展一起用吗？
+
+可以——组合正是设计目标。它从不注册工具，其他 bash 扩展看到的已是改写后的
+命令，并可在其后继续处理。
+
+### 如果没装 rg 或 fd 会怎样？
+
+该规则被跳过，原始命令逐字节原样执行——守护绝不会把命令改写成一条会失败的
+命令。
+
 ## 相关 pi 扩展
 
 - [pi-tool-guard](https://github.com/tychenjiajun/pi-tool-guard) —— 让昂贵的 bash
@@ -186,7 +215,8 @@ pi -e .          # 为单个会话加载这个 checkout 作为扩展
 设计说明见 [`AGENTS.md`](../AGENTS.md) 与 [`CONTEXT.md`](../CONTEXT.md)。
 pi 官方文档：
 [Extensions](https://pi.dev/docs/latest/extensions) ·
-[Pi packages](https://pi.dev/docs/latest/packages)。
+[Pi packages](https://pi.dev/docs/latest/packages) ·
+[Package gallery](https://pi.dev/packages/pi-cli-guard)。
 
 ## License
 

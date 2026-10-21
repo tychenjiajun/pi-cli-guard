@@ -2,7 +2,7 @@
   "name": "pi-cli-guard",
   "version": "0.2.0",
   "type": "module",
-  "description": "Pi extension that canonicalizes the agent's bash commands to the preferred modern toolchain: grep/egrep/fgrep → rg (ripgrep) and a conservative find → fd subset, applied through the tool_call event so it composes with other bash extensions",
+  "description": "Pi extension that rewrites the agent's bash to the modern toolchain: grep/egrep/fgrep → rg (ripgrep), find → fd (conservative whitelist) — applied at the tool_call event, so it composes with other bash extensions",
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
@@ -55,7 +55,7 @@
   ],
   "author": "Jiajun Chen <tychenjiajun@live.cn>",
   "license": "MIT",
-  "homepage": "https://www.npmjs.com/package/pi-cli-guard",
+  "homepage": "https://pi.dev/packages/pi-cli-guard",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tychenjiajun/pi-cli-guard.git"
@@ -78,7 +78,8 @@
     "extensions": [
       "./src/index.ts"
     ],
-    "image": "./assets/preview.svg"
+    "image": "https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/preview.png",
+    "video": "https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/demo.mp4"
   },
   "engines": {
     "node": ">=22.19.0"

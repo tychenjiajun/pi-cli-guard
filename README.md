@@ -3,7 +3,7 @@
 English | [简体中文](./docs/README.zh-CN.md)
 
 <p align="center">
-  <img src="./assets/preview.svg" alt="pi-cli-guard rewrites the model's bash commands to the modern toolchain — grep → rg and a conservative find → fd subset" width="880">
+  <img src="https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/preview.png" alt="pi-cli-guard rewrites the model's bash commands to the modern toolchain — grep → rg and a conservative find → fd subset" width="880">
 </p>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -41,6 +41,10 @@ colliding with them.
 > `find` vs 1 `fd`** — plus the user repeatedly interrupting to say *"grep so
 > slow, use rg"*. A prompt line is not enough; the harness has to fix it.
 
+**Install:** `pi install npm:pi-cli-guard` · see the
+[pi.dev gallery page](https://pi.dev/packages/pi-cli-guard) and the
+[packages documentation](https://pi.dev/docs/latest/packages).
+
 ## Install
 
 ```bash
@@ -64,6 +68,8 @@ Read from the environment — no settings plumbing:
 | `PI_CLI_GUARD_NOTICE` | on | `off` stops appending the rewrite note to the result |
 
 ## What it rewrites
+
+![Demo: pi-cli-guard rewrites the model's legacy grep/find bash to rg and fd](https://raw.githubusercontent.com/tychenjiajun/pi-cli-guard/main/assets/demo.gif)
 
 ### `grep` → `rg`
 
@@ -173,6 +179,30 @@ This extension therefore never registers a tool; it rewrites the input in the
 `tool_call` event. `pi-tool-guard` sees the rewritten command and can still
 strip/re-apply a trailing `rg`/`fd` view extractor.
 
+## FAQ
+
+### Does pi-cli-guard override or replace the bash tool?
+
+No. It mutates `event.input.command` in the `tool_call` event; the tool itself
+is never re-registered, so the first-registered `bash` (e.g. `pi-tool-guard`)
+keeps winning.
+
+### How is this different from just telling the model to use rg in a prompt?
+
+Prompts are advisory — across real sessions the model still wrote 6,888
+`grep` calls vs 1,648 `rg`. pi-cli-guard enforces the mapping in the harness
+and refuses any rewrite that would change behaviour (BRE, find edge cases).
+
+### Does pi-cli-guard work with pi-tool-guard and other bash extensions?
+
+Yes — composition is the design goal. It never registers a tool, so other bash
+extensions see the already-rewritten command and can act on it afterwards.
+
+### What happens if rg or fd is not installed?
+
+The rule is skipped and the original command runs byte-for-byte untouched —
+the guard never rewrites a command into one that would fail.
+
 ## Related pi extensions
 
 - [pi-tool-guard](https://github.com/tychenjiajun/pi-tool-guard) — runs an
@@ -201,7 +231,8 @@ real `rg`/`fd` and compare stdout; they skip when the binaries are absent.
 Design notes live in [`AGENTS.md`](./AGENTS.md) and [`CONTEXT.md`](./CONTEXT.md).
 Pi's own documentation:
 [Extensions](https://pi.dev/docs/latest/extensions) ·
-[Pi packages](https://pi.dev/docs/latest/packages).
+[Pi packages](https://pi.dev/docs/latest/packages) ·
+[Package gallery](https://pi.dev/packages/pi-cli-guard).
 
 ## License
 

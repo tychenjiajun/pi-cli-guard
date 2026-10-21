@@ -1,110 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-  <title>pi-cli-guard — rewrites the model's bash commands to the modern toolchain: grep → rg and a conservative find → fd subset</title>
-  <desc>pi-cli-guard mutates the bash tool_call input so legacy commands become ripgrep and fd: grep -rn 'FAIL\|Test Files' . becomes rg --with-filename -n 'FAIL|Test Files' ., and find . -type f -name '*.py' becomes fd -t f -g -s '*.py' . — with a notice shown to the model and a details.piCliGuard contract.</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-label="pi-cli-guard promo card">
+  <!-- 16:10 gallery card. Design rules: readable at a 168px-wide center crop,
+       content inside the centered 80% safe area (x 160..1440), min secondary font 28px. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0c0b14"/>
-      <stop offset="0.55" stop-color="#110f1d"/>
-      <stop offset="1" stop-color="#0d0c17"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#a78bfa"/>
     </linearGradient>
-    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.55"/>
+    <radialGradient id="glow" cx="0.5" cy="1" r="0.9">
+      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.30"/>
+      <stop offset="0.6" stop-color="#7c3aed" stop-opacity="0.10"/>
       <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#10b981" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="chip" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
-    </linearGradient>
-    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
-      <circle cx="1.5" cy="1.5" r="1.5" fill="#ffffff" opacity="0.05"/>
+    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+      <path d="M50 0H0v50" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
     </pattern>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
-    </filter>
-    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+    <marker id="down" viewBox="0 0 10 10" refX="5" refY="8" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0 L5,10 L10,0 z" fill="#a78bfa"/>
     </marker>
     <style>
-      .code { font-family: ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace; font-size: 15.5px; }
-      .kw   { fill: #c792ea; }
-      .fn   { fill: #82aaff; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; }
+      .sys  { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
       .str  { fill: #7ee787; }
-      .num  { fill: #f2cc60; }
-      .pun  { fill: #8b849c; }
       .pl   { fill: #e6e1f5; }
-      .cm   { fill: #6b7391; }
-      .key  { fill: #79c0ff; }
+      .pun  { fill: #8b849c; }
     </style>
   </defs>
 
-  <!-- background -->
-  <rect width="1200" height="630" fill="url(#bg)"/>
-  <ellipse cx="1060" cy="40" rx="460" ry="320" fill="url(#glowA)"/>
-  <ellipse cx="120" cy="600" rx="420" ry="300" fill="url(#glowB)"/>
-  <rect width="1200" height="630" fill="url(#dots)"/>
+  <rect width="1600" height="1000" fill="#0d0d12"/>
+  <rect width="1600" height="1000" fill="url(#grid)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
 
-  <!-- header -->
-  <rect x="60" y="44" width="146" height="32" rx="16" fill="#7c3aed" fill-opacity="0.14" stroke="#7c3aed" stroke-opacity="0.7"/>
-  <text x="133" y="65" font-size="14" font-weight="700" fill="#c4b5fd" text-anchor="middle" letter-spacing="0.5">pi extension</text>
-  <text x="1140" y="65" font-size="14" font-weight="600" fill="#6f6a85" text-anchor="end" letter-spacing="0.5">MIT · TypeScript strict · 138 tests</text>
+  <!-- corner labels -->
+  <rect x="140" y="90" rx="8" width="300" height="56" fill="#7c3aed" fill-opacity="0.18" stroke="#7c3aed"/>
+  <text class="mono" x="290" y="128" text-anchor="middle" font-size="30" fill="#c4b5fd">pi extension</text>
+  <text class="mono" x="1460" y="128" text-anchor="end" font-size="30" fill="#8b8b9e">pi.dev/packages</text>
 
-  <!-- title -->
-  <text x="60" y="140" font-size="46" font-weight="800" fill="#f6f4ff" letter-spacing="-0.5">pi-cli-guard</text>
-  <text x="61" y="178" font-size="19" fill="#9a94b3">The model writes <tspan fill="#f87171" font-weight="600">legacy</tspan> bash — it runs the <tspan fill="#34d399" font-weight="600">modern</tspan> toolchain</text>
+  <!-- name -->
+  <text class="mono" x="800" y="310" text-anchor="middle" font-size="130" font-weight="700" fill="#ffffff">pi-cli-guard</text>
 
-  <!-- left: what the model wrote -->
-  <g filter="url(#soft)">
-    <rect x="60" y="215" width="470" height="250" rx="16" fill="#0f0e18" stroke="#2b2745" stroke-width="1.5"/>
-  </g>
-  <path d="M60,231 a16,16 0 0 1 16,-16 h438 a16,16 0 0 1 16,16 v24 h-470 z" fill="#1a1828"/>
-  <line x1="60" y1="255" x2="530" y2="255" stroke="#2b2745" stroke-width="1.5"/>
-  <text x="86" y="240" class="code" font-size="13.5" fill="#8f89a8">tool_call · event.input.command</text>
-  <text x="86" y="298" class="code" xml:space="preserve"><tspan class="pl">grep -rn </tspan><tspan class="str">'FAIL\|Test Files'</tspan><tspan class="pl"> .</tspan></text>
-  <text x="86" y="332" class="code" xml:space="preserve"><tspan class="pl">find . -type f -name </tspan><tspan class="str">'*.py'</tspan><tspan class="pl"> | head -30</tspan></text>
-  <text x="86" y="384" class="code" font-size="13" fill="#f87171">legacy · slower · not .gitignore-aware</text>
-  <text x="86" y="410" class="code" font-size="13" fill="#6f6a85">6,888 grep writes vs 1,648 rg across</text>
-  <text x="86" y="430" class="code" font-size="13" fill="#6f6a85">real sessions — a prompt line is not enough</text>
+  <!-- tagline -->
+  <text class="sys" x="800" y="392" text-anchor="middle" font-size="44" fill="#c9c9d4">the model writes <tspan fill="#f87171" font-weight="600">legacy</tspan> bash — it runs <tspan fill="#34d399" font-weight="600">rg</tspan> &amp; <tspan fill="#34d399" font-weight="600">fd</tspan></text>
 
-  <!-- arrow -->
-  <line x1="540" y1="340" x2="600" y2="340" stroke="#a78bfa" stroke-width="2.5" marker-end="url(#arr)"/>
+  <!-- before → after panel -->
+  <rect x="240" y="444" rx="16" width="1120" height="256" fill="#101017" stroke="#2b2745" stroke-width="2"/>
 
-  <!-- right: what runs -->
-  <g filter="url(#soft)">
-    <rect x="612" y="215" width="528" height="250" rx="16" fill="#0f0e18" stroke="#3b3566" stroke-width="1.5"/>
-  </g>
-  <path d="M612,231 a16,16 0 0 1 16,-16 h496 a16,16 0 0 1 16,16 v24 h-528 z" fill="#1a1828"/>
-  <line x1="612" y1="255" x2="1140" y2="255" stroke="#3b3566" stroke-width="1.5"/>
-  <text x="638" y="240" class="code" font-size="13.5" fill="#8f89a8">what actually executes</text>
+  <rect x="272" y="478" rx="22" width="170" height="46" fill="#f87171" fill-opacity="0.14" stroke="#f87171" stroke-opacity="0.8"/>
+  <text class="mono" x="357" y="509" text-anchor="middle" font-size="28" fill="#f87171">before</text>
+  <text class="mono" x="900" y="512" text-anchor="middle" font-size="34" xml:space="preserve"><tspan class="pun">$ </tspan><tspan class="pl">grep -rn </tspan><tspan class="str">'FAIL\|Test Files'</tspan><tspan class="pl"> .</tspan></text>
 
-  <text x="638" y="298" class="code" xml:space="preserve"><tspan class="pl">rg --with-filename -n </tspan><tspan class="str">'FAIL|Test Files'</tspan><tspan class="pl"> .</tspan></text>
-  <text x="638" y="332" class="code" xml:space="preserve"><tspan class="pl">fd -t f -g -s </tspan><tspan class="str">'*.py'</tspan><tspan class="pl"> . | head -30</tspan></text>
+  <line x1="357" y1="544" x2="357" y2="576" stroke="#a78bfa" stroke-width="3" marker-end="url(#down)"/>
 
-  <text x="638" y="384" class="code" font-size="15"><tspan fill="#f5b642">🛡</tspan><tspan fill="#c4b5fd" font-weight="700"> pi-cli-guard</tspan><tspan class="cm"> · grep → rg (ripgrep) · find → fd</tspan></text>
-  <text x="638" y="410" class="code" font-size="13.5" fill="#34d399">[pi-cli-guard] Rewrote bash command(s) …</text>
-  <text x="638" y="434" class="code" font-size="13.5" fill="#79c0ff">details.piCliGuard · versioned · composable</text>
-  <text x="638" y="456" class="code" font-size="13.5" fill="#f5b642">refuses rather than guesses — BRE &amp; find kept</text>
+  <rect x="272" y="606" rx="22" width="170" height="46" fill="#34d399" fill-opacity="0.14" stroke="#34d399" stroke-opacity="0.8"/>
+  <text class="mono" x="357" y="637" text-anchor="middle" font-size="28" fill="#34d399">after</text>
+  <text class="mono" x="900" y="640" text-anchor="middle" font-size="34" xml:space="preserve"><tspan class="pun">$ </tspan><tspan class="pl">rg --with-filename -n </tspan><tspan class="str">'FAIL|Test Files'</tspan><tspan class="pl"> .</tspan></text>
 
-  <!-- bottom stats -->
-  <g opacity="0.96">
-    <rect x="60" y="497" width="240" height="76" rx="14" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.08"/>
-    <text x="86" y="528" font-size="24" font-weight="800" fill="#f6f4ff">93%</text>
-    <text x="86" y="550" font-size="13.5" fill="#8f89a8">real grep calls now rewritten to rg</text>
+  <!-- install pill -->
+  <rect x="390" y="744" rx="14" width="820" height="92" fill="#16161d" stroke="url(#accent)" stroke-width="3"/>
+  <text class="mono" x="800" y="802" text-anchor="middle" font-size="42" fill="#a78bfa">$ pi install npm:pi-cli-guard</text>
 
-    <rect x="326" y="497" width="240" height="76" rx="14" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.08"/>
-    <text x="352" y="528" font-size="24" font-weight="800" fill="#f6f4ff">11,030</text>
-    <text x="352" y="550" font-size="13.5" fill="#8f89a8">BRE alternations unlocked (of 11,829)</text>
-
-    <rect x="592" y="497" width="240" height="76" rx="14" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.08"/>
-    <text x="618" y="528" font-size="24" font-weight="800" fill="#f6f4ff">2 rules</text>
-    <text x="618" y="550" font-size="13.5" fill="#8f89a8">grep → rg · find → fd, capability-aware</text>
-
-    <rect x="858" y="497" width="282" height="76" rx="14" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.08"/>
-    <text x="884" y="528" font-size="24" font-weight="800" fill="#f6f4ff">138</text>
-    <text x="884" y="550" font-size="13.5" fill="#8f89a8">tests, incl. real-binary equivalence</text>
-  </g>
+  <!-- footer -->
+  <text class="sys" x="800" y="898" text-anchor="middle" font-size="30" fill="#8b8b9e">grep → rg (ripgrep) · find → fd · rewrites at the tool_call seam · composes with other bash extensions</text>
+  <rect x="440" y="936" width="720" height="10" rx="5" fill="url(#accent)"/>
 </svg>
