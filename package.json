@@ -1,6 +1,6 @@
 {
   "name": "pi-cli-guard",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "description": "Pi extension that rewrites the agent's bash to the modern toolchain: grep/egrep/fgrep → rg (ripgrep), find → fd (conservative whitelist) — applied at the tool_call event, so it composes with other bash extensions",
   "main": "src/index.ts",
