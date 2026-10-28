@@ -26,20 +26,36 @@ function render(args: ArgToken[]): string {
 }
 
 describe("translateGrep — flag mapping", () => {
+  it("passes `.` when -r has no path, like grep does", () => {
+    // `rg pattern` with no path reads stdin when it is not a terminal; grep -r
+    // always searches `.`, and its output carries the `./` prefix.
+    expect(render(toks("-rn", "foo"))).toBe("rg --with-filename -n foo .");
+    expect(render(toks("-rl", "foo"))).toBe("rg --with-filename -l --binary foo .");
+    expect(render(toks("-r", "-e", "foo"))).toBe("rg --with-filename -e foo .");
+  });
+
   it("drops -r and keeps -n", () => {
     expect(render(toks("-rn", "foo", "src"))).toBe("rg --with-filename -n foo src");
   });
 
   it("splits clustered short flags", () => {
-    expect(render(toks("-rln", "foo", "src"))).toBe("rg --with-filename -l -n foo src");
+    expect(render(toks("-rln", "foo", "src"))).toBe("rg --with-filename -l -n --binary foo src");
   });
 
   it("maps -R to -L (follow symlinks)", () => {
     expect(render(toks("-R", "foo", "."))).toBe("rg -L --with-filename foo .");
   });
 
+  it("passes --binary with -l/-L, which grep lists but rg filters out", () => {
+    // Over a directory walk rg hides binary files from -l/-L; grep reports them.
+    expect(render(toks("-rl", "foo", "."))).toBe("rg --with-filename -l --binary foo .");
+    expect(render(toks("-rL", "foo", "."))).toBe(
+      "rg --with-filename --files-without-match --binary foo .",
+    );
+  });
+
   it("maps -L to --files-without-match (rg -L means follow)", () => {
-    expect(render(toks("-L", "foo", "."))).toBe("rg --files-without-match foo .");
+    expect(render(toks("-L", "foo", "."))).toBe("rg --files-without-match --binary foo .");
   });
 
   it("maps -h to --no-filename (rg -h is help)", () => {
@@ -50,20 +66,53 @@ describe("translateGrep — flag mapping", () => {
     expect(render(toks("-H", "foo"))).toBe("rg --with-filename foo");
   });
 
+  it("emits exactly one filename flag, with -h winning over -r/-H", () => {
+    // grep's -h suppresses the prefix even though -r implies -H; emitting both
+    // flags would let rg's last-one-wins order decide, which is not grep.
+    expect(render(toks("-h", "-r", "foo", "."))).toBe("rg --no-filename foo .");
+    expect(render(toks("-r", "-h", "foo", "."))).toBe("rg --no-filename foo .");
+    expect(render(toks("-hn", "-r", "foo", "."))).toBe("rg --no-filename -n foo .");
+    expect(render(toks("-h", "-H", "foo", "f"))).toBe("rg --no-filename foo f");
+    expect(render(toks("-r", "-H", "foo", "f"))).toBe("rg --with-filename foo f");
+  });
+
   it("maps -s to --no-messages (rg -s is case-sensitive)", () => {
     expect(render(toks("-s", "foo"))).toBe("rg --no-messages foo");
   });
 
-  it("drops -I (rg ignores binaries by default)", () => {
-    expect(render(toks("-I", "foo", "."))).toBe("rg foo .");
+  it("refuses -I: grep skips binary files, ripgrep reports them", () => {
+    // `grep -I foo bin` exits 1; `rg foo bin` prints "binary file matches"
+    // and exits 0. ripgrep has no --binary-files=without-match equivalent.
+    expect(render(toks("-I", "foo", "."))).toMatch(/^REFUSE: .*-I/);
+  });
+
+  it("refuses -m 0, where grep and rg disagree about `no limit`", () => {
+    expect(render(toks("-m", "0", "foo", "f"))).toMatch(/^REFUSE: .*-m 0/);
+    expect(render(toks("-m0", "foo", "f"))).toMatch(/^REFUSE: .*-m 0/);
+    expect(render(toks("--max-count=0", "foo", "f"))).toMatch(/^REFUSE: .*-m 0/);
+  });
+
+  it("refuses -c combined with -l/-L, where grep and rg pick different outputs", () => {
+    expect(render(toks("-cl", "foo", "a", "b"))).toMatch(/^REFUSE: .*-c.*-l/);
+    expect(render(toks("-c", "-L", "foo", "a", "b"))).toMatch(/^REFUSE: .*-c.*-l/);
   });
 
   it("keeps the common passthrough flags", () => {
-    expect(render(toks("-ivwxnoc", "foo", "."))).toBe("rg -i -v -w -x -n -o -c foo .");
+    expect(render(toks("-ivwxno", "foo", "."))).toBe("rg -i -v -w -x -n -o foo .");
+  });
+
+  it("adds --include-zero so -c still reports files with zero matches", () => {
+    // `grep -c` prints `file:0` for every searched file; `rg -c` omits them.
+    expect(render(toks("-c", "foo", "a.txt", "b.txt"))).toBe("rg -c --include-zero foo a.txt b.txt");
+    expect(render(toks("-rc", "foo", "."))).toBe("rg --with-filename -c --include-zero foo .");
   });
 
   it("maps --include to a positive -g glob", () => {
-    expect(render(toks("-rn", "--include=*.ts", "foo", "src"))).toBe("rg --with-filename -n -g '*.ts' foo src");
+    // grep's --include does not skip ignored/hidden files, but an rg whitelist
+    // glob *does* override its ignore rules — so pin the rest of grep's scope.
+    expect(render(toks("-rn", "--include=*.ts", "foo", "src"))).toBe(
+      "rg --with-filename -n -g '*.ts' --hidden --no-ignore foo src",
+    );
   });
 
   it("maps --exclude to a negated -g glob", () => {
@@ -103,6 +152,33 @@ describe("translateGrep — flag mapping", () => {
   });
 });
 
+describe("translateGrep — notes", () => {
+  function notes(args: ArgToken[]): string {
+    const decision = translateGrep(args);
+    if (decision.kind !== "rewrite") throw new Error(`not a rewrite: ${decision.kind}`);
+    return decision.notes.join("\n");
+  }
+
+  it("tells the model that ripgrep skips ignored/hidden files", () => {
+    expect(notes(toks("-rn", "foo", "."))).toContain("skips .gitignore'd and hidden files");
+  });
+
+  it("warns that binary-file diagnostics and counts differ", () => {
+    expect(notes(toks("-rn", "foo", "."))).toContain("binary file matches");
+  });
+
+  it("warns that rg is recursive without -r, so a directory argument now works", () => {
+    expect(notes(toks("-l", "foo", "."))).toContain("recursive even without -r");
+  });
+
+  it("tells the model when --include turned the ignore rules off", () => {
+    const text = notes(toks("-rn", "--include=*.ts", "foo", "."));
+    expect(text).toContain("--include");
+    expect(text).toContain("--hidden --no-ignore");
+    expect(text).not.toContain("skips hidden");
+  });
+});
+
 describe("translateGrep — dialect safety", () => {
   it("rewrites a BRE pattern that is identical under Rust regex", () => {
     expect(render(toks("-rn", "'10\\.128\\.3\\.143'", "."))).toBe("rg --with-filename -n '10\\.128\\.3\\.143' .");
@@ -118,6 +194,14 @@ describe("translateGrep — dialect safety", () => {
 
   it("keeps a perl-regex pattern via -P", () => {
     expect(render(toks("-P", "'\\d+'", "f"))).toBe("rg -P '\\d+' f");
+  });
+
+  it("refuses a BRE pattern with a doubled star (grep: syntax error, rg: matches)", () => {
+    expect(breToRust("a**")).toBeUndefined();
+    expect(breToRust("a***b")).toBeUndefined();
+    // An escaped star is a literal in both dialects, so `\**` stays usable.
+    expect(breToRust("a\\**")).toBe("a\\**");
+    expect(render(toks("'a**'", "f"))).toMatch(/^REFUSE:/);
   });
 
   it("refuses a BRE pattern whose meaning changes", () => {

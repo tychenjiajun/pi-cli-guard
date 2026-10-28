@@ -119,6 +119,15 @@ function flattenRedundantGroups(args: readonly ArgToken[]): ArgToken[] | undefin
   return open.length === 0 ? out : undefined;
 }
 
+/**
+ * True when every alternative of a glob needs a leading dot to match. fd aborts
+ * with an error on such a glob because it filters hidden entries by default.
+ */
+function onlyMatchesHidden(glob: string): boolean {
+  const inner = glob.startsWith("{") && glob.endsWith("}") ? glob.slice(1, -1) : glob;
+  return inner.split(",").every((part) => part.startsWith("."));
+}
+
 function positiveInt(value: string): number | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   const n = Number(value);
@@ -179,6 +188,12 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
     if (glob.includes("/")) {
       return { kind: "refuse", reason: `-name glob ${JSON.stringify(glob)} contains a path separator` };
     }
+    if (onlyMatchesHidden(glob)) {
+      return {
+        kind: "refuse",
+        reason: `-name glob ${JSON.stringify(glob)} only matches hidden entries, which fd skips unless -H is passed`,
+      };
+    }
     if (globs.length > 0 && !expectingName) {
       return { kind: "refuse", reason: "multiple -name/-iname tests joined by implicit AND" };
     }
@@ -233,6 +248,10 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
       if (next === undefined) return { kind: "refuse", reason: `${value} needs a value` };
       const depth = positiveInt(next.value);
       if (depth === undefined) return { kind: "refuse", reason: `${value} expects a non-negative integer` };
+      if (value === "-maxdepth" && depth === 0) {
+        // `find . -maxdepth 0` prints just `.`; `fd -d 0` prints nothing.
+        return { kind: "refuse", reason: "-maxdepth 0 has no fd equivalent (fd never lists the search root)" };
+      }
       if (value === "-maxdepth") maxDepth = depth;
       else minDepth = depth;
       lastWasNameTest = false;
@@ -316,7 +335,7 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
       args: out,
       notes: [
         "find→fd",
-        "fd matches -path against the full path with a regex; directories print with a trailing /; fd skips hidden and .gitignore'd paths (add -u to search all)",
+        "fd matches -path against the full path with a regex; fd skips hidden and .gitignore'd paths (add -u to search all); directories print with a trailing / and fd never lists the search root itself",
       ],
     };
   }
@@ -353,6 +372,9 @@ export function translateFind(args: readonly ArgToken[]): RuleDecision {
     // Debian alias `fdfind`); the rule stays pure.
     name: "fd",
     args: out,
-    notes: ["find→fd", "fd skips hidden and .gitignore'd paths; directories print with a trailing /; add -u to search all"],
+    notes: [
+      "find→fd",
+      "fd skips hidden and .gitignore'd paths (add -u to search all); directories print with a trailing / and fd never lists the search root itself",
+    ],
   };
 }

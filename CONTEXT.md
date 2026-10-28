@@ -37,8 +37,9 @@ changed. Controlled by `PI_CLI_GUARD_NOTICE`.
 
 **Contract**:
 The versioned `details.piCliGuard` record published on the result
-(`contract.ts`), carrying the original command, the rewritten command, and the
-list of changes.
+(`contract.ts`, currently v2), carrying the original command, the rewritten
+command, and the list of changes. Each change carries the rule's `notes` for
+that command, which is also what the **Notice** prints.
 
 **Dialect Gate** (`grep` only):
 The check that a **basic** (BRE) pattern means the same under Rust regex before

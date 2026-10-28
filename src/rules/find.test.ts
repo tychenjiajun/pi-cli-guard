@@ -24,6 +24,26 @@ function render(args: ArgToken[]): string {
   return "noop";
 }
 
+describe("translateFind — notes", () => {
+  function notes(args: ArgToken[]): string {
+    const decision = translateFind(args);
+    if (decision.kind !== "rewrite") throw new Error(`not a rewrite: ${decision.kind}`);
+    return decision.notes.join("\n");
+  }
+
+  it("states the three fd differences a model can notice", () => {
+    const text = notes(toks(".", "-name", '"*.py"'));
+    expect(text).toContain("skips hidden");
+    expect(text).toContain("trailing /");
+    expect(text).toContain("never lists the search root");
+  });
+
+  it("states them for the -path form too", () => {
+    const text = notes(toks(".", "-path", '"*sub*"', "-name", '"*.py"'));
+    expect(text).toContain("never lists the search root");
+  });
+});
+
 describe("translateFind — simple forms", () => {
   it("translates -name to a case-sensitive glob", () => {
     expect(render(toks(".", "-name", '"*.py"'))).toBe("fd -g -s '*.py' .");
@@ -157,6 +177,25 @@ describe("translateFind — grouping and -path", () => {
   it("refuses -path mixed with -iname or an -o chain", () => {
     expect(render(toks(".", "-path", '"*x*"', "-iname", '"*.py"'))).toMatch(/^REFUSE/);
     expect(render(toks(".", "-path", '"*x*"', "-name", "a", "-o", "-name", "b"))).toMatch(/^REFUSE/);
+  });
+});
+
+describe("translateFind — refusals where fd cannot match find", () => {
+  it("refuses -maxdepth 0 (find lists the root, fd lists nothing)", () => {
+    expect(render(toks(".", "-maxdepth", "0"))).toMatch(/^REFUSE: .*maxdepth 0/);
+  });
+
+  it("refuses a -name glob that can only match hidden entries", () => {
+    // fd aborts with "The pattern(s) seems to only match files with a leading
+    // dot" and exits 1, so the rewrite would turn results into an error.
+    expect(render(toks(".", "-name", "'.*'"))).toMatch(/^REFUSE: .*hidden/);
+    expect(render(toks(".", "-iname", "'.env*'"))).toMatch(/^REFUSE: .*hidden/);
+    expect(render(toks(".", "-name", "'{.a,.b}'"))).toMatch(/^REFUSE: .*hidden/);
+  });
+
+  it("still translates globs that can match visible names", () => {
+    expect(render(toks(".", "-name", "'*env'"))).toBe("fd -g -s '*env' .");
+    expect(render(toks(".", "-name", "'{.a,*.b}'"))).toBe("fd -g -s '{.a,*.b}' .");
   });
 });
 

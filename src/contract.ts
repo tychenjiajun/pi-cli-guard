@@ -10,12 +10,19 @@
 import type { RuleId } from "./rules.ts";
 
 export const PI_CLI_GUARD_DETAILS_KEY = "piCliGuard";
-export const PI_CLI_GUARD_CONTRACT_VERSION = 1;
+export const PI_CLI_GUARD_CONTRACT_VERSION = 2;
 
 export interface PiCliGuardChange {
   readonly rule: RuleId;
   readonly before: string;
   readonly after: string;
+  /**
+   * What this specific rewrite changed for the model, in notice order. The
+   * first entry is the rule tag (`grep→rg`); the rest are scope/format
+   * caveats that apply *to this command* (which may differ from the rule's
+   * usual behaviour, e.g. `--include` turning ripgrep's ignore rules off).
+   */
+  readonly notes: readonly string[];
 }
 
 export interface PiCliGuardDetails {
@@ -44,7 +51,9 @@ function isChange(value: unknown): value is PiCliGuardChange {
     isRecord(value) &&
     typeof value.rule === "string" &&
     typeof value.before === "string" &&
-    typeof value.after === "string"
+    typeof value.after === "string" &&
+    Array.isArray(value.notes) &&
+    value.notes.every((note) => typeof note === "string")
   );
 }
 

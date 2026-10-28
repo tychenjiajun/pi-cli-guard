@@ -7,7 +7,7 @@
 // command and the guard's rewritten command and compare stdout. They are
 // skipped when `rg`/`fd` are not installed, so CI without them still passes.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,6 +40,11 @@ const enabled: EnabledRule[] = [
 ];
 
 let dir: string;
+/** Second root with hidden + `.gitignore`d files: the guard deliberately skips
+ * them, except where grep itself searched them (`--include`). */
+let skipDir: string;
+/** Third root: a binary file with and without a match (`-l`/`-L`). */
+let binDir: string;
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "pi-cli-guard-eq-"));
@@ -49,24 +54,48 @@ beforeAll(() => {
   writeFileSync(join(dir, "sub", "c.txt"), "nope\n");
   writeFileSync(join(dir, "sub", "d.log"), "foo log\n");
   writeFileSync(join(dir, "e.txt"), "a+\n");
+  // No match: `grep -c` must still report `miss.txt:0`.
+  writeFileSync(join(dir, "miss.txt"), "nothing here\n");
+
+  skipDir = mkdtempSync(join(tmpdir(), "pi-cli-guard-eq-skip-"));
+  mkdirSync(join(skipDir, "sub"));
+  mkdirSync(join(skipDir, ".hid"));
+  writeFileSync(join(skipDir, "a.txt"), "foo\n");
+  writeFileSync(join(skipDir, "sub", "c.txt"), "foo\n");
+  writeFileSync(join(skipDir, ".hidden.txt"), "foo\n");
+  writeFileSync(join(skipDir, ".hid", "alpha.txt"), "foo\n");
+  writeFileSync(join(skipDir, ".gitignore"), "ignored.txt\n");
+  writeFileSync(join(skipDir, "ignored.txt"), "foo\n");
+  execFileSync("git", ["init", "-q"], { cwd: skipDir, stdio: "ignore" });
+
+  binDir = mkdtempSync(join(tmpdir(), "pi-cli-guard-eq-bin-"));
+  writeFileSync(join(binDir, "text.txt"), "foo\n");
+  writeFileSync(join(binDir, "hit.bin"), Buffer.from("foo\0\0foo\n"));
+  writeFileSync(join(binDir, "miss.bin"), Buffer.from("zzz\0zzz\n"));
 });
 
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(skipDir, { recursive: true, force: true });
+  rmSync(binDir, { recursive: true, force: true });
+});
 
-function run(command: string): string {
-  const stdout = execFileSync("sh", ["-c", command], {
-    cwd: dir,
+function run(command: string, cwd = dir): string {
+  // spawnSync, not execFileSync: `grep -L` exits 1 on some greps even when it
+  // printed results, and the suite judges stdout only.
+  const result = spawnSync("sh", ["-c", command], {
+    cwd,
     encoding: "utf-8",
     env: { ...process.env, RIPGREP_CONFIG_PATH: "" },
   });
-  return stdout.split("\n").filter((line) => line.length > 0).sort().join("\n");
+  return (result.stdout ?? "").split("\n").filter((line) => line.length > 0).sort().join("\n");
 }
 
 /** Run the original and the rewritten command and assert identical stdout. */
-function expectSame(original: string): void {
+function expectSame(original: string, cwd = dir): void {
   const rewritten = rewriteCommand(original, enabled).command;
   expect(rewritten, `did not rewrite: ${original}`).not.toBe(original);
-  expect(run(rewritten), `rewrite: ${rewritten}`).toBe(run(original));
+  expect(run(rewritten, cwd), `rewrite: ${rewritten}`).toBe(run(original, cwd));
 }
 
 /**
@@ -96,7 +125,15 @@ describe.skipIf(!hasRg)("grep → rg equivalence (real rg)", () => {
   const cases = [
     "grep -n foo a.txt",
     "grep -c foo a.txt",
+    "grep -c foo a.txt miss.txt",
+    "grep -rc foo .",
+    "grep -hn -r foo .",
+    "grep -r -h foo .",
+    "grep -hn -r foo sub",
     "grep -rn foo .",
+    // No path: grep -r searches `.`; the rewrite must pass it explicitly.
+    "grep -rn foo",
+    "grep -rl foo",
     "grep -rn foo a.txt",
     "grep -rln foo .",
     "grep -rF 'a+' .",
@@ -121,6 +158,56 @@ describe.skipIf(!hasRg)("grep → rg equivalence (real rg)", () => {
   ];
   for (const command of cases) {
     it(command, () => expectSame(command));
+  }
+});
+
+describe.skipIf(!hasRg)("grep → rg equivalence where grep searched ignored/hidden files", () => {
+  // `--include` is a whitelist, and ripgrep whitelists override its ignore
+  // rules, so a `-g` rewrite would surface files grep skipped... except that
+  // grep *did* search them: `grep -r --include` ignores `.gitignore` and dot
+  // files unless told otherwise. The rewrite must therefore disable both.
+  for (const command of ["grep --include='*.txt' -rn foo .", "grep --include='*.txt' -rc foo ."]) {
+    it(command, () => expectSame(command, skipDir));
+  }
+
+  // Documented divergence: without `--include` the guard keeps ripgrep's
+  // ignore rules, so it finds strictly fewer files than grep -r.
+  it("grep -rn foo . (documented skip)", () => {
+    const rewritten = rewriteCommand("grep -rn foo .", enabled).command;
+    expect(rewritten).toBe("rg --with-filename -n foo .");
+    const before = run("grep -rn foo .", skipDir).split("\n");
+    const after = run(rewritten, skipDir).split("\n");
+    expect(after.every((line) => before.includes(line))).toBe(true);
+    expect(after).toContain("./a.txt:1:foo");
+    expect(after.join("\n")).not.toContain("hidden");
+    expect(after.join("\n")).not.toContain("ignored");
+  });
+});
+
+describe.skipIf(!hasRg)("grep → rg equivalence over binary files", () => {
+  // grep reports binary files for -l/-L; ripgrep filters them out of a
+  // directory walk unless --binary is passed.
+  for (const command of ["grep -rl foo .", "grep -rL foo ."]) {
+    it(command, () => expectSame(command, binDir));
+  }
+});
+
+describe("refusals leave the model's command untouched", () => {
+  // Each of these has no faithful `rg`/`fd` spelling; running the original keeps
+  // grep/find semantics instead of silently returning different results.
+  const refused = [
+    "grep -I foo bin.dat",
+    "grep -m 0 foo a.txt",
+    "grep -c -l foo a.txt b.txt",
+    "grep 'a**' a.txt",
+    "find . -maxdepth 0",
+    "find . -name '.*'",
+    "find . -iname '.env*'",
+  ];
+  for (const command of refused) {
+    it(command, () => {
+      expect(rewriteCommand(command, enabled).command).toBe(command);
+    });
   }
 });
 

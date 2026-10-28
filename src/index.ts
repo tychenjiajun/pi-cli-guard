@@ -85,6 +85,7 @@ export function registerCliGuard(pi: ExtensionAPI, config?: CliGuardConfig): voi
         rule: change.rule,
         before: change.before,
         after: change.after,
+        notes: change.notes,
       })),
       ...(rewritten.refusals.length > 0
         ? {

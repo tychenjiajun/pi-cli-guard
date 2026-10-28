@@ -27,7 +27,10 @@ import type { RuleDecision } from "../rules.ts";
 
 type RegexMode = "basic" | "extended" | "fixed" | "perl";
 
-const SHORT_BOOL: Record<string, { out: string[]; mode?: RegexMode }> = {
+const SHORT_BOOL: Record<
+  string,
+  { out: string[]; mode?: RegexMode; filename?: "with" | "none"; recursive?: boolean }
+> = {
   i: { out: ["-i"] },
   v: { out: ["-v"] },
   w: { out: ["-w"] },
@@ -42,19 +45,26 @@ const SHORT_BOOL: Record<string, { out: string[]; mode?: RegexMode }> = {
   P: { out: [], mode: "perl" },
   E: { out: [], mode: "extended" },
   G: { out: [], mode: "basic" },
-  r: { out: ["--with-filename"] },
-  R: { out: ["-L", "--with-filename"] },
+  r: { out: [], filename: "with", recursive: true },
+  R: { out: ["-L"], filename: "with", recursive: true },
   L: { out: ["--files-without-match"] },
-  H: { out: ["--with-filename"] },
-  h: { out: ["--no-filename"] },
+  H: { out: [], filename: "with" },
+  h: { out: [], filename: "none" },
   s: { out: ["--no-messages"] },
-  I: { out: [] },
 };
 
 const SHORT_TAKES_VALUE = new Set(["e", "f", "m", "A", "B", "C"]);
 
+/** `-m 0` / `--max-count=0`: grep means "no limit", rg means "no matches". */
+function isZero(value: string): boolean {
+  return /^0+$/.test(value);
+}
+
 /** Long options that map to a fixed set of replacement tokens. */
-const LONG_BOOL: Record<string, { out: string[]; mode?: RegexMode }> = {
+const LONG_BOOL: Record<
+  string,
+  { out: string[]; mode?: RegexMode; filename?: "with" | "none"; recursive?: boolean }
+> = {
   "ignore-case": { out: ["-i"] },
   "invert-match": { out: ["-v"] },
   "word-regexp": { out: ["-w"] },
@@ -67,10 +77,10 @@ const LONG_BOOL: Record<string, { out: string[]; mode?: RegexMode }> = {
   quiet: { out: ["-q"] },
   silent: { out: ["-q"] },
   text: { out: ["-a"] },
-  recursive: { out: ["--with-filename"] },
-  "dereference-recursive": { out: ["-L", "--with-filename"] },
-  "with-filename": { out: ["--with-filename"] },
-  "no-filename": { out: ["--no-filename"] },
+  recursive: { out: [], filename: "with", recursive: true },
+  "dereference-recursive": { out: ["-L"], filename: "with", recursive: true },
+  "with-filename": { out: [], filename: "with" },
+  "no-filename": { out: [], filename: "none" },
   "no-messages": { out: ["--no-messages"] },
   "fixed-strings": { out: [], mode: "fixed" },
   "perl-regexp": { out: [], mode: "perl" },
@@ -113,8 +123,17 @@ export function breToRust(pattern: string): string | undefined {
   // while a translated `|` would be a class member — so refuse rather than
   // guess. Other backslashes keep their existing handling.
   let inClass = false;
+  /** A `*` directly after an unescaped `*` is a BRE syntax error, not `()*`. */
+  let previousWasStar = false;
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]!;
+    if (c === "*") {
+      if (previousWasStar) return undefined;
+      previousWasStar = true;
+      out += c;
+      continue;
+    }
+    previousWasStar = false;
     if (c === "[") {
       inClass = true;
       out += c;
@@ -185,6 +204,31 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
   const ePatternIndices: number[] = [];
   let sawE = false;
   let sawF = false;
+  let sawCount = false;
+  /**
+   * grep has a single filename-prefix mode and `-h` always wins over `-r`/`-H`,
+   * so the mode is emitted once and rewritten in place when `-h` shows up last.
+   */
+  let filenameIndex: number | undefined;
+  let filenameSuppressed = false;
+  let sawInclude = false;
+  let sawList = false;
+  let recursive = false;
+  const setFilename = (mode: "with" | "none"): void => {
+    if (mode === "none") {
+      filenameSuppressed = true;
+      if (filenameIndex !== undefined) {
+        emit[filenameIndex] = token("--no-filename");
+      } else {
+        emit.push(token("--no-filename"));
+        filenameIndex = emit.length - 1;
+      }
+      return;
+    }
+    if (filenameSuppressed || filenameIndex !== undefined) return;
+    emit.push(token("--with-filename"));
+    filenameIndex = emit.length - 1;
+  };
   let mode: RegexMode = "basic";
   let afterDoubleDash = false;
 
@@ -214,6 +258,10 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
       if (bool) {
         if (inline !== undefined) return { kind: "refuse", reason: `--${name} does not take a value` };
         emit.push(...outOf(bool.out));
+        if (name === "count") sawCount = true;
+        if (name === "files-with-matches" || name === "files-without-match") sawList = true;
+        if (bool.recursive) recursive = true;
+        if (bool.filename !== undefined) setFilename(bool.filename);
         mode = bool.mode ?? mode;
         i++;
         continue;
@@ -238,6 +286,7 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
         // rg's `-g` accepts a leading `!` to negate a glob.
         const negated = name === "exclude" || name === "exclude-dir";
         const glob = name === "exclude-dir" ? `${globValue}/**` : globValue;
+        if (!negated) sawInclude = true;
         emit.push(token("-g"), token(negated ? `!${glob}` : glob));
         i++;
         continue;
@@ -253,6 +302,12 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
           if (next === undefined) return { kind: "refuse", reason: `--${name} needs a value` };
           valueToken = next;
           i++;
+        }
+        if (takesValue === "-m" && isZero(valueToken.value)) {
+          return {
+            kind: "refuse",
+            reason: '-m 0 means "no limit" to grep but "no matches" to rg',
+          };
         }
         emit.push(token(takesValue));
         if (takesValue === "-e") {
@@ -274,9 +329,16 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
     let handled = true;
     for (let c = 0; c < cluster.length; c++) {
       const ch = cluster[c]!;
+      if (ch === "I") {
+        return { kind: "refuse", reason: "-I (skip binary files) has no faithful rg equivalent" };
+      }
       const bool = SHORT_BOOL[ch];
       if (bool) {
         emit.push(...outOf(bool.out));
+        if (ch === "c") sawCount = true;
+        if (ch === "l" || ch === "L") sawList = true;
+        if (bool.recursive) recursive = true;
+        if (bool.filename !== undefined) setFilename(bool.filename);
         mode = bool.mode ?? mode;
         continue;
       }
@@ -290,6 +352,12 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
           if (next === undefined) return { kind: "refuse", reason: `-${ch} needs a value` };
           valueToken = next;
           i++;
+        }
+        if (ch === "m" && isZero(valueToken.value)) {
+          return {
+            kind: "refuse",
+            reason: '-m 0 means "no limit" to grep but "no matches" to rg',
+          };
         }
         emit.push(token(`-${ch}`));
         if (ch === "e") {
@@ -309,9 +377,18 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
     i++;
   }
 
+  // grep -c and rg -c disagree about which flag wins next to -l/-L.
+  if (sawCount && sawList) {
+    return { kind: "refuse", reason: "-c combined with -l/-L picks a different output in grep and rg" };
+  }
+
   // Determine the pattern(s) and files.
   const positionalPatternFirst = !sawE && !sawF;
-  const files = positionalPatternFirst ? positionals.slice(1) : positionals;
+  const files = [...(positionalPatternFirst ? positionals.slice(1) : positionals)];
+  // `grep -r pattern` (no path) searches `.`; `rg pattern` would read stdin
+  // when it is not a terminal. Pass the root explicitly so the results and the
+  // `./` prefix match.
+  if (recursive && files.length === 0) files.push(token("."));
   let positionalPattern = positionalPatternFirst && positionals.length > 0 ? positionals[0]! : undefined;
 
   // Dialect safety: only BRE (the default) needs the gate. A translatable
@@ -340,6 +417,14 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
   if (mode === "fixed") out.push(token("-F"));
   else if (mode === "perl") out.push(token("-P"));
   out.push(...emit);
+  // A whitelist glob overrides ripgrep's ignore rules, but grep's --include
+  // does not: re-enable the files grep would have searched.
+  if (sawInclude) out.push(token("--hidden"), token("--no-ignore"));
+  // rg hides binary files from -l/-L during a recursive walk; grep lists them.
+  if (sawList) out.push(token("--binary"));
+  // `grep -c` prints `<file>:0` for files with no match; `rg -c` omits them
+  // unless `--include-zero` is passed.
+  if (sawCount) out.push(token("--include-zero"));
   if (!sawE && positionalPattern) out.push(positionalPattern);
   out.push(...files);
 
@@ -349,6 +434,15 @@ export function translateGrep(args: readonly ArgToken[]): RuleDecision {
     kind: "rewrite",
     name: "rg",
     args: out,
-    notes: ["grep→rg", "ripgrep respects .gitignore and skips hidden files; add -u to search all"],
+    notes: [
+      "grep→rg",
+      sawInclude
+        ? "grep --include searched hidden and .gitignore'd files too, so --hidden --no-ignore was passed"
+        : "ripgrep skips .gitignore'd and hidden files here (add -u to search all)",
+      // The remaining two are always true of the rg spelling, and both are
+      // things a model can notice in the output.
+      "rg is recursive even without -r, so `grep PATTERN DIR` searches here instead of erroring",
+      "binary files: rg prints `binary file matches` without the name, and counts can differ",
+    ],
   };
 }

@@ -29,7 +29,7 @@
 - `src/rules/find.ts` — find → fd translator (conservative whitelist)
 - `src/shell.ts` — `ArgToken`, `shellQuote`, `joinTokens`
 - `src/path.ts` — `PATH` executable lookup (no `which` spawn)
-- `src/contract.ts` — `details.piCliGuard` interop contract
+- `src/contract.ts` — `details.piCliGuard` interop contract (v2); each change carries the rule's `notes`, which `src/notice.ts` prints
 - `src/notice.ts` — model notice text + transient footer status
 
 ## Reference data

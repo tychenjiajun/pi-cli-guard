@@ -152,6 +152,11 @@ Accepted, documented deviations (surfaced to the model in the notice):
   rg — this turns a common model mistake into working behaviour.
 - **BRE patterns** that would change meaning are refused, not guessed.
 
+Each change carries the `notes` the rule attached to that command — the same
+lines the notice prints — so a caveat that only applies to this invocation
+(e.g. `--include` turning ripgrep's ignore rules off) is not lost behind a
+rule-level paragraph.
+
 A command a rule recognises but declines to translate is left byte-for-byte
 untouched and only reported (`refusals`), so the model can tell "the guard had
 no faithful equivalent" from "the guard never looked".
@@ -166,7 +171,7 @@ const guard = readPiCliGuardDetails(result.details);
 if (guard) {
   guard.originalCommand; // "grep -rn foo ."
   guard.command;         // "rg --with-filename -n foo ."
-  guard.changes;         // [{ rule: "grep-to-rg", before, after }]
+  guard.changes;         // [{ rule: "grep-to-rg", before, after, notes }]
   guard.refusals;        // [{ rule: "find-to-fd", before, reason }] — declined rewrites
 }
 ```
