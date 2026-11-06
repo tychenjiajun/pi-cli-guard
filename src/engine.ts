@@ -18,8 +18,7 @@
 // The engine is pure: callers pass the enabled rules and the resolved binary
 // names, which keeps it independent of `PATH` and process state.
 
-import { parse } from "unbash";
-import type { Command, Word } from "unbash";
+import { forEachChild, parse, type Command, type SyntaxNode, type Word } from "unbash";
 
 import { joinTokens } from "./shell.ts";
 import type { CommandRule, RuleId } from "./rules.ts";
@@ -76,10 +75,20 @@ function collectCommands(node: unknown, out: Command[]): void {
 }
 
 function hasSubstitution(word: Word | undefined): boolean {
-  if (!word || !word.parts) return false;
-  return word.parts.some(
-    (part) => part.type === "CommandExpansion" || part.type === "ProcessSubstitution",
-  );
+  if (!word) return false;
+  // Walk the word's part tree, not just its top level: unbash 6 nests a
+  // substitution under the part that owns it (a `BracketGlob` such as
+  // `[$(cmd)]`, a `DoubleQuoted`, a brace/extglob body), so a shallow scan
+  // would miss it and splice over the substitution. `forEachChild` visits
+  // canonical children only, so this stops at the substitution node itself and
+  // never descends into its nested script (which we deliberately leave alone).
+  const stack: SyntaxNode[] = [word];
+  while (stack.length > 0) {
+    const node = stack.pop() as SyntaxNode;
+    if (node.type === "CommandExpansion" || node.type === "ProcessSubstitution") return true;
+    forEachChild(node, (child) => stack.push(child));
+  }
+  return false;
 }
 
 /**
@@ -124,14 +133,19 @@ export function rewriteCommand(source: string, enabled: readonly EnabledRule[]):
     const entry = byName.get(name.value);
     if (!entry) continue;
 
+    // Only suffix words are rewritten; redirects are not part of the span, so a
+    // trailing `> out` survives the splice. unbash 6 interleaves words,
+    // assignments and redirects in `suffix`, hence the narrowing by type.
+    const args = command.suffix.filter((item): item is Word => item.type === "Word");
+
     const spanStart = name.pos;
     let spanEnd = name.end;
-    for (const word of command.suffix) {
+    for (const word of args) {
       if (word.end > spanEnd) spanEnd = word.end;
     }
     if (spanEnd <= spanStart) continue;
 
-    const words = [name, ...command.suffix];
+    const words = [name, ...args];
     if (words.some(hasSubstitution)) continue;
 
     // A redirect inside the name..args span would be swallowed by the splice.
@@ -139,11 +153,11 @@ export function rewriteCommand(source: string, enabled: readonly EnabledRule[]):
     if (interleaved) continue;
 
     const before = source.slice(spanStart, spanEnd);
-    const args = command.suffix.map((word) => ({ text: word.text, value: word.value }));
+    const ruleArgs = args.map((word) => ({ text: word.text, value: word.value }));
 
     let decision;
     try {
-      decision = entry.rule.translate(args);
+      decision = entry.rule.translate(ruleArgs);
     } catch {
       continue;
     }

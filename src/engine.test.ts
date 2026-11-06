@@ -86,6 +86,17 @@ describe("rewriteCommand — safety", () => {
     );
   });
 
+  it("sees a substitution nested under the part that owns it", () => {
+    // unbash 6 nests the substitution of `[$(cmd)]` under a `Glob` part, and a
+    // `"$(cmd)"` under `DoubleQuoted`. A shallow scan of the word's top-level
+    // parts would miss both and splice over the substitution.
+    expect(rw("grep --exclude=[$(git rev-parse HEAD)] foo .")).toBe(
+      "grep --exclude=[$(git rev-parse HEAD)] foo .",
+    );
+    expect(rw('grep -n "$(cat f)" .')).toBe('grep -n "$(cat f)" .');
+    expect(rw("grep -n 'pre'$(x)'post' f")).toBe("grep -n 'pre'$(x)'post' f");
+  });
+
   it("is idempotent", () => {
     expect(rw("grep -rn foo .")).toBe("rg --with-filename -n foo .");
     expect(rw("rg -n foo .")).toBe("rg -n foo .");
