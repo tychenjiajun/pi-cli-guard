@@ -95,6 +95,9 @@ describe("rewriteCommand — safety", () => {
     );
     expect(rw('grep -n "$(cat f)" .')).toBe('grep -n "$(cat f)" .');
     expect(rw("grep -n 'pre'$(x)'post' f")).toBe("grep -n 'pre'$(x)'post' f");
+    // unbash 4 parsed this as a plain quoted word, so `find` rewrote the
+    // substitution into a literal glob; it must now be left alone.
+    expect(rw('find . -name "$(basename $PWD)-*"')).toBe('find . -name "$(basename $PWD)-*"');
   });
 
   it("is idempotent", () => {
